@@ -48,7 +48,7 @@ class Scroll:
 
     ```python
         from scrolldata import Scroll, VesuviusData
-        
+
         scroll = Scroll(VesuviusData.FRAG1_54KEV_SURFACE, downsampling=4)
         scroll.init()
         all_data = scroll.load(to_end=True)
@@ -215,14 +215,22 @@ class Scroll:
         cache_path = path.join(self.cache_root_dir, filename)
         if path.exists(cache_path):
             logger.info(f"Loading cached {filename} ...")
-            return Image.open(cache_path)
+            im = Image.open(cache_path)
         else:
             logger.info(f"Downloading {filename} ...")
             res = requests.get(url, auth=self._auth)
             assert res.status_code == 200, res.status_code
             im = Image.open(io.BytesIO(res.content))
             im.save(cache_path)
-            return im
+
+        resized_im = im.resize(
+            (
+                int(im.width / self._downsampling),
+                int(im.height / self._downsampling),
+            )
+        )
+        del im
+        return resized_im
 
     def init(self):
         """Initialize the scroll data."""
@@ -324,15 +332,6 @@ class Scroll:
                 slice=i, width=self._filename_width
             )
             slice_url = f"{self._volume_url}/{filename}"
-            im = self._load_image(slice_url)
-            resized_im = im.resize(
-                (
-                    int(im.width / self._downsampling),
-                    int(im.height / self._downsampling),
-                )
-            )
-            del im
-            slices.append(np.array(resized_im))
-            del resized_im
+            slices.append(np.array(self._load_image(slice_url)))
 
         return np.stack(slices)
