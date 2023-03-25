@@ -96,7 +96,7 @@ class Scroll:
             raise RuntimeError("Unable to find scrollprize.cfg in working directory")
 
         config = configparser.ConfigParser()
-        config.read("scrollprize.cfg")
+        config.read(_CFG_FILE)
         self._auth = (config["data"]["username"], config["data"]["password"])
         self._volume_url = config["data"]["url"] + str(data.value)
 
