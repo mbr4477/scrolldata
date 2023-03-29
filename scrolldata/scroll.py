@@ -102,7 +102,7 @@ class Scroll:
 
     def __repr__(self) -> str:
         out = [
-            "ScrollData(",
+            "Scroll(",
             f"  url={self._volume_url}",
             f"  name={self.name}",
             f"  num_slices={self.num_slices}",
