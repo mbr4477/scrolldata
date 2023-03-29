@@ -1,6 +1,6 @@
 # scrolldata
 
-A package for loading data from the [Vesuvius Challenge](https://scrollprize.org/).
+An **unofficial** package for loading data from the [Vesuvius Challenge](https://scrollprize.org/).
 
 ## Installation
 ```bash
@@ -38,7 +38,8 @@ from scrolldata import Scroll, VesuviusData
 
 scroll = Scroll(
     VesuviusData.FRAG1_54KEV_SURFACE, 
-    downsampling=4
+    downsampling=4,
+    numpy_cache=True # cache downloaded files as NPY instead of TIFF
 )
 
 # Pulls the metadata

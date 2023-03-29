@@ -1,6 +1,9 @@
 import argparse
-from .scroll import Scroll, VesuviusData
+import logging
+
 import numpy as np
+
+from .scroll import LOGGER_NAME, Scroll, VesuviusData
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -14,8 +17,15 @@ parser.add_argument("--end", "-e", type=int, help="last slice index")
 parser.add_argument("--downsampling", "-d", type=int, help="downsampling factor")
 parser.add_argument("--out", "-o", type=str, help="output numpy file")
 parser.add_argument("--cache", type=str, help="path to cache directory")
-parser.add_argument("--numpy", action="store_true", help="cache as numpy", default=False)
+parser.add_argument(
+    "--numpy", action="store_true", help="cache as numpy", default=False
+)
+parser.add_argument("--verbose", "-v", action="store_true", help="show all logs")
 args = parser.parse_args()
+
+if args.verbose:
+    logger = logging.getLogger(LOGGER_NAME)
+    logger.setLevel(logging.DEBUG)
 
 data = Scroll(VesuviusData[args.data], args.cache, args.downsampling, args.numpy)
 data.init()

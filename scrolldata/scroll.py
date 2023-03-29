@@ -1,19 +1,18 @@
+import configparser
+import io
+import json
+import logging
+from enum import Enum
+from os import makedirs, path
 from typing import Optional
+
+import numpy as np
 import requests
 from PIL import Image
-import io
-from os import path, makedirs
-import logging
-import numpy as np
-from enum import Enum
-import configparser
-import os
 
-logging.basicConfig()
-logger = logging.getLogger("scrolldata")
-logger.setLevel(
-    logging.DEBUG if os.environ.get("DEBUG_SCROLL") == "1" else logging.WARNING
-)
+from . import LOGGER_NAME
+
+logger = logging.getLogger(LOGGER_NAME)
 
 _CFG_FILE = "scrolldata.cfg"
 
@@ -82,13 +81,14 @@ class Scroll:
                 instead of raw TIFF files.
         """
         super().__init__()
+        self._data = data
         self._slice_height_mm: Optional[float] = None
         self._num_slices: Optional[int] = None
         self._name: Optional[str] = None
         self._min_value: Optional[float] = None
         self._max_value: Optional[float] = None
         self._parent_dir = dir if dir is not None else "."
-        self._root_dir: Optional[str] = None
+        self._root_dir = path.join(self._parent_dir, self._data.name)
         self._filename_width = 4
         self._mask: Optional[np.ndarray] = None
         self._ink_labels: Optional[np.ndarray] = None
@@ -174,7 +174,6 @@ class Scroll:
         Returns:
             The cache root directory path.
         """
-        assert self._root_dir is not None
         return self._root_dir
 
     @property
@@ -261,15 +260,21 @@ class Scroll:
 
     def _populate_metadata(self):
         """Populate the metadata from the volume."""
-        metadata_url = f"{self._volume_url}/meta.json"
-        res = requests.get(metadata_url, auth=self._auth)
-        content = res.json()
+        cache_meta = path.join(self.cache_root_dir, "meta.json")
+        if path.exists(cache_meta):
+            with open(cache_meta, "r") as meta_file:
+                content = json.loads(meta_file.read())
+        else:
+            metadata_url = f"{self._volume_url}/meta.json"
+            res = requests.get(metadata_url, auth=self._auth)
+            content = res.json()
+            with open(cache_meta, "w") as meta_file:
+                meta_file.write(json.dumps(content, indent=2))
         self._num_slices = content["slices"]
         self._slice_height_mm = content["voxelsize"] * 1e-3
         self._name = content["name"]
         self._min_value = content["min"]
         self._max_value = content["max"]
-        self._root_dir = path.join(self._parent_dir, content["uuid"])
         self._filename_width = int(np.log10(self._num_slices)) + 1
         self._uuid = content["uuid"]
 
