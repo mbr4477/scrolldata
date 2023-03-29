@@ -71,12 +71,15 @@ class Scroll:
         data: VesuviusData,
         dir: Optional[str] = None,
         downsampling: Optional[int] = None,
+        numpy_cache: bool = False,
     ):
         """
         Args:
             data: The VesuviusData to load.
             dir: The cache parent directory.
             downsampling: The downsampling factor to apply.
+            numpy_cache: If True, cache data as NPY arrays
+                instead of raw TIFF files.
         """
         super().__init__()
         self._slice_height_mm: Optional[float] = None
@@ -90,6 +93,7 @@ class Scroll:
         self._mask: Optional[np.ndarray] = None
         self._ink_labels: Optional[np.ndarray] = None
         self._downsampling = downsampling if downsampling is not None else 1
+        self._numpy_cache = numpy_cache
         self._uuid: Optional[str] = None
 
         if not path.exists(_CFG_FILE):
@@ -202,38 +206,45 @@ class Scroll:
         """
         return self._mask is not None and self._ink_labels is not None
 
-    def _load_image(self, url: str) -> Image.Image:
+    def _load_image(self, url: str) -> np.ndarray:
         """Load an image, downloading if necessary.
 
         Args:
             url: The image url.
 
         Returns:
-            The PIL image.
+            The numpy array of image data.
         """
         filename = path.basename(url)
+        if self._numpy_cache:
+            filename = filename.rsplit(".", 1)[0] + ".npy"
+
         cache_path = path.join(self.cache_root_dir, filename)
         if path.exists(cache_path):
             logger.info(f"Loading cached {filename} ...")
-            im = Image.open(cache_path)
+            if self._numpy_cache:
+                out = np.load(cache_path)
+            else:
+                im = Image.open(cache_path)
+                out = np.array(im)
+                del im
         else:
-            logger.info(f"Downloading {filename} ...")
+            logger.info(f"Downloading {path.basename(url)} ...")
             res = requests.get(url, auth=self._auth)
             assert res.status_code == 200, res.status_code
             im = Image.open(io.BytesIO(res.content))
-            im.save(cache_path)
-
-        resized_im = im.resize(
-            (
-                int(im.width / self._downsampling),
-                int(im.height / self._downsampling),
-            )
-        )
-        del im
-        return resized_im
+            out = np.array(im)
+            if self._numpy_cache:
+                np.save(cache_path, np.array(im))
+            else:
+                im.save(cache_path)
+            del im
+        resized = out[:: self._downsampling, :: self._downsampling]
+        return resized
 
     def init(self):
         """Initialize the scroll data."""
+        logger.info("Initializing scroll metadata ...")
         self._populate_metadata()
         if not path.exists(self.cache_root_dir):
             makedirs(self.cache_root_dir)
@@ -243,10 +254,10 @@ class Scroll:
             root_fragment_url = self._volume_url.rsplit("/", maxsplit=1)[0]
 
             ink_labels_url = f"{root_fragment_url}/inklabels.png"
-            self._ink_labels = np.array(self._load_image(ink_labels_url))
+            self._ink_labels = self._load_image(ink_labels_url)
 
             mask_url = f"{root_fragment_url}/mask.png"
-            self._mask = np.array(self._load_image(mask_url))
+            self._mask = self._load_image(mask_url)
 
     def _populate_metadata(self):
         """Populate the metadata from the volume."""
@@ -332,6 +343,6 @@ class Scroll:
                 slice=i, width=self._filename_width
             )
             slice_url = f"{self._volume_url}/{filename}"
-            slices.append(np.array(self._load_image(slice_url)))
+            slices.append(self._load_image(slice_url))
 
         return np.stack(slices)
