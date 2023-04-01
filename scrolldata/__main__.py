@@ -24,6 +24,7 @@ parser.add_argument("--verbose", "-v", action="store_true", help="show all logs"
 args = parser.parse_args()
 
 if args.verbose:
+    logging.basicConfig()
     logger = logging.getLogger(LOGGER_NAME)
     logger.setLevel(logging.DEBUG)
 

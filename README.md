@@ -4,7 +4,7 @@ An **unofficial** package for loading data from the [Vesuvius Challenge](https:/
 
 ## Installation
 ```bash
-python -m pip install https://github.com/mbr4477/scrolldata.git
+python -m pip install git+https://github.com/mbr4477/scrolldata.git
 ```
 
 ## Setup
