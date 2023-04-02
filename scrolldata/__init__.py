@@ -1,3 +1,3 @@
 LOGGER_NAME = "scrolldata"
 
-from .scroll import Scroll, VesuviusData
+from ._scroll import Scroll, VesuviusData

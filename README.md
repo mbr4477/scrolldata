@@ -20,16 +20,16 @@ password=<password>
 
 ## Usage
 
-### Command Line Tool
+### Downloading Data
 You can easily download scroll data from the command line into `.npy` files:
 
 ```bash
-python -m scrolldata FRAG1_54KEV_SURFACE --downsample 4 --out frag1.npy
+python -m scrolldata load FRAG1_54KEV_SURFACE --downsample 4 --out frag1.npy
 ```
 
 This will also create `frag1_ink_labels.npy` and `frag1_mask.npy`. If labels and mask are not available, these files will not be created.
 
-For more help, run `python -m scrolldata -h`.
+For more help, run `python -m scrolldata load -h`.
 
 ### Script Usage
 
@@ -48,4 +48,24 @@ print(scroll)
 
 # Loads the data as numpy
 all_data = scroll.load(to_end=True)
+```
+
+## Creating a Patch Dataset
+The command line tool can also generate a data set of randomly sampled patches to the working directory:
+
+```bash
+python -m scrolldata patches FRAG1_54KEV_SURFACE --cache ./cache --downsampling 4 --size 128 --holdout 0.4,0.4,0.2,0.2 --num 512 --train 0.7 --seed 0 --show --export
+```
+
+For more information use `python -m scrolldata patches -h`.
+
+You can then load this as a PyTorch data set:
+
+```python
+from scrolldata.torch import PatchDataset
+
+trainset = PatchDataset("./train")
+
+x = trainset[0]
+print(x["inputs"].shape, x["targets"].shape)
 ```
