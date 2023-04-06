@@ -30,7 +30,6 @@ class PatchDataset(Dataset):
         """
         super().__init__()
         self._patch_folders = sorted(glob.glob(path.join(dir, "*")))
-        print(self._patch_folders[:10])
 
     def __len__(self) -> int:
         """Returns the length of the data set."""
