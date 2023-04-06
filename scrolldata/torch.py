@@ -46,7 +46,9 @@ class PatchDataset(Dataset):
         folder = self._patch_folders[idx]
         inputs_file = path.join(folder, "inputs.npy")
         targets_file = path.join(folder, "targets.npy")
+        inputs = torch.tensor(np.load(inputs_file).astype(np.float32))
+        inputs /= 65535.0
         return {
-            "inputs": torch.tensor(np.load(inputs_file).astype(np.float32)),
+            "inputs": inputs,
             "targets": torch.tensor(np.load(targets_file).astype(int)),
         }
