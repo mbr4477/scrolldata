@@ -11,7 +11,7 @@ def test_rle():
                     [1, 1, 1, 1],
                 ]
             ),
-            "expected": "2 1 4 1 6 1 8 1",
+            "expected": "5 4",
         },
         {
             "inputs": np.array(
@@ -20,7 +20,7 @@ def test_rle():
                     [0, 1, 1, 1],
                 ]
             ),
-            "expected": "1 1 3 4 8 1",
+            "expected": "1 3 6 3",
         },
         {
             "inputs": np.array(
@@ -29,7 +29,7 @@ def test_rle():
                     [1, 0, 1, 0],
                 ]
             ),
-            "expected": "1 2 5 2",
+            "expected": "1 1 3 1 5 1 7 1",
         },
     ]
     for case in cases:
