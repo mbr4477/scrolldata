@@ -152,7 +152,7 @@ def export_patches(scroll: Scroll, patch_splits: PatchSplits, dir: str):
         """A utility function to load in all the data splits from the scorll data."""
         splits_data: List[List[np.ndarray]] = []
         splits_labels: List[List[np.ndarray]] = []
-        for slice_i in tqdm(range(scroll.num_slices)):
+        for slice_i in tqdm(range(len(scroll))):
             slice_data = scroll.load(start_slice=slice_i, num_slices=1)
             for split_i in range(len(splits)):
                 if slice_i == 0:

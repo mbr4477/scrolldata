@@ -56,6 +56,14 @@ class VesuviusMetadata:
 
 
 class Resolver(ABC):
+    def get_num_slices(self) -> int:
+        """Get the number of slices.
+
+        Returns:
+            The number of slices.
+        """
+        ...
+
     def resolve_slice(self, slice: int, width: Optional[int] = None) -> np.ndarray:
         """Resolve the specified image slice.
 
@@ -176,6 +184,11 @@ class RemoteResolver(Resolver):
         del im
         return out[:: self._downsampling, :: self._downsampling]
 
+    def get_num_slices(self) -> int:
+        metadata = self.resolve_metadata
+        assert metadata is not None
+        return metadata.num_slices
+
     def resolve_slice(self, slice: int, width: Optional[int] = None) -> np.ndarray:
         if width is None:
             # Try to infer from the number of slices
@@ -290,6 +303,16 @@ class LocalResolver(Resolver):
             out = np.array(im)
             del im
         return out[:: self._downsampling, :: self._downsampling]
+
+    def get_num_slices(self) -> int:
+        metadata = self.resolve_metadata()
+        if metadata is None:
+            # Infer from data directory
+            ext = "npy" if self._numpy else "tif"
+            data_files = glob.glob(path.join(self._data_dir, f"*.{ext}"))
+            return len(data_files)
+        else:
+            return metadata.num_slices
 
     def resolve_slice(self, slice: int, width: Optional[int] = None) -> np.ndarray:
         ext = "npy" if self._numpy else "tif"
@@ -445,6 +468,9 @@ class Scroll:
             resolver.resolve_ink_labels(),
             resolver.resolve_metadata(),
         )
+
+    def __len__(self) -> int:
+        return self._resolver.get_num_slices()
 
     @property
     def ink_labels(self) -> np.ndarray:

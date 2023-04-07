@@ -103,21 +103,15 @@ if args.verbose:
     logger.setLevel(logging.DEBUG)
 
 if args.which == "download":
-    data = Scroll.from_remote(
+    scroll = Scroll.from_remote(
         args.config,
         VesuviusData[args.data],
         args.cache,
         downsampling=1,
         numpy=args.numpy,
     )
-    assert data.metadata is not None
-    for i in tqdm(
-        range(
-            args.start,
-            args.end + 1 if args.end is not None else data.metadata.num_slices,
-        )
-    ):
-        tmp = data.load(start_slice=i, num_slices=1)
+    for i in tqdm(range(len(scroll))):
+        tmp = scroll.load(start_slice=i, num_slices=1)
         del tmp
 
 elif args.which == "patches":
