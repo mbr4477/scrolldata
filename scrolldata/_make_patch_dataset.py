@@ -1,32 +1,37 @@
-from typing import Tuple
+import os
+import os.path as path
+from typing import Optional, Tuple
 
 import matplotlib.pyplot as plt
 from matplotlib import patches
 
-from ._scroll import Scroll, VesuviusData
+from ._scroll import Scroll
 from .patches import export_patches, get_patches
 
 
 def make_patch_dataset(
-    which_scroll: VesuviusData,
-    downsampling: int,
+    scroll: Scroll,
     patch_size: int,
-    cache_dir: str,
     num_patches: int,
     holdout_region: Tuple[float, float, float, float],
-    export: bool = False,
+    export: Optional[str] = None,
     show: bool = False,
     seed: int = 0,
     train_frac: float = 0.7,
 ):
-    """Make patch data set."""
-    scroll = Scroll(
-        which_scroll,
-        cache_dir,
-        downsampling=downsampling,
-        numpy_cache=True,
-    )
-    scroll.init()
+    """Make patch data set.
+
+    Args:
+        scroll: The scroll to pull patches from.
+        patch_size: The edge size of the square patches.
+        num_patches: The total number of patches to sample.
+        holdout_region: A (x, y, w, h) region of the image
+            to avoid sampling from, in fractions from 0 to 1.
+        export: Path to data export directory.
+        show: If True, visualize the patches.
+        seed: The random seed for sampling.
+        train_frac: The fraction of patches to use for training.
+    """
     patch_splits = get_patches(
         scroll,
         patch_size=patch_size,
@@ -35,9 +40,6 @@ def make_patch_dataset(
         seed=seed,
         train_frac=train_frac,
     )
-
-    if export:
-        export_patches(scroll, patch_splits, ".")
 
     if show:
         _, axs = plt.subplots(ncols=2, dpi=150)
@@ -82,3 +84,8 @@ def make_patch_dataset(
                 )
             ax.axis("off")
         plt.show()
+
+    if export is not None:
+        if not path.exists(export):
+            os.makedirs(export)
+        export_patches(scroll, patch_splits, export)

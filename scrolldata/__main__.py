@@ -1,7 +1,7 @@
 import argparse
 import logging
 
-import numpy as np
+from tqdm import tqdm
 
 from ._make_patch_dataset import make_patch_dataset
 from ._scroll import LOGGER_NAME, Scroll, VesuviusData
@@ -11,9 +11,16 @@ subparsers = parser.add_subparsers()
 
 # Load command
 load_parser = subparsers.add_parser(
-    "load", formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    "download", formatter_class=argparse.ArgumentDefaultsHelpFormatter
 )
-load_parser.set_defaults(which="load")
+load_parser.set_defaults(which="download")
+load_parser.add_argument(
+    "--config",
+    "-c",
+    type=str,
+    help="path to config file with data set url and auth",
+    required=True,
+)
 load_parser.add_argument(
     "data",
     type=str,
@@ -22,8 +29,6 @@ load_parser.add_argument(
 )
 load_parser.add_argument("--start", "-s", type=int, help="first slice index", default=0)
 load_parser.add_argument("--end", "-e", type=int, help="last slice index")
-load_parser.add_argument("--downsampling", "-d", type=int, help="downsampling factor")
-load_parser.add_argument("--out", "-o", type=str, help="output numpy file")
 load_parser.add_argument("--cache", type=str, help="path to cache directory")
 load_parser.add_argument(
     "--numpy", action="store_true", help="cache as numpy", default=False
@@ -57,13 +62,22 @@ patches_parser.add_argument(
     required=True,
 )
 patches_parser.add_argument(
+    "--config",
+    "-c",
+    type=str,
+    help="path to config file with data set url and auth",
+    required=True,
+)
+patches_parser.add_argument(
+    "--numpy", action="store_true", help="cache as numpy", default=False
+)
+patches_parser.add_argument(
     "--num", type=int, help="number of patches to sample", required=True
 )
 patches_parser.add_argument(
     "--export",
-    action="store_true",
-    help="export the patches to the working directory",
-    default=False,
+    type=str,
+    help="export the patches to this directory",
 )
 patches_parser.add_argument(
     "--show", action="store_true", help="show the patches", default=False
@@ -88,22 +102,29 @@ if args.verbose:
     logger = logging.getLogger(LOGGER_NAME)
     logger.setLevel(logging.DEBUG)
 
-if args.which == "load":
-    data = Scroll(VesuviusData[args.data], args.cache, args.downsampling, args.numpy)
-    data.init()
-    x = data.load(start_slice=args.start, end_slice=args.end, to_end=args.end is None)
-    if args.out:
-        np.save(args.out, x)
-        if data.has_labels:
-            parts = args.out.rsplit(".", 1)
-            np.save(f"{parts[0]}_mask.{parts[1]}", data.mask)
-            np.save(f"{parts[0]}_ink_labels.{parts[1]}", data.ink_labels)
-elif args.which == "patches":
-    make_patch_dataset(
+if args.which == "download":
+    scroll = Scroll.from_remote(
+        args.config,
         VesuviusData[args.data],
-        args.downsampling,
-        args.size,
         args.cache,
+        downsampling=1,
+        numpy=args.numpy,
+    )
+    for i in tqdm(range(len(scroll))):
+        tmp = scroll.load(start_slice=i, num_slices=1)
+        del tmp
+
+elif args.which == "patches":
+    scroll = Scroll.from_remote(
+        args.config,
+        VesuviusData[args.data],
+        args.cache,
+        downsampling=args.downsampling,
+        numpy=args.numpy,
+    )
+    make_patch_dataset(
+        scroll,
+        args.size,
         args.num,
         tuple([float(x) for x in args.holdout.split(",")]),
         args.export,
