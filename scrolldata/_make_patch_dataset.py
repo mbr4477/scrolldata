@@ -3,15 +3,13 @@ from typing import Tuple
 import matplotlib.pyplot as plt
 from matplotlib import patches
 
-from ._scroll import Scroll, VesuviusData
+from ._scroll import Scroll
 from .patches import export_patches, get_patches
 
 
 def make_patch_dataset(
-    which_scroll: VesuviusData,
-    downsampling: int,
+    scroll: Scroll,
     patch_size: int,
-    cache_dir: str,
     num_patches: int,
     holdout_region: Tuple[float, float, float, float],
     export: bool = False,
@@ -20,13 +18,6 @@ def make_patch_dataset(
     train_frac: float = 0.7,
 ):
     """Make patch data set."""
-    scroll = Scroll(
-        which_scroll,
-        cache_dir,
-        downsampling=downsampling,
-        numpy_cache=True,
-    )
-    scroll.init()
     patch_splits = get_patches(
         scroll,
         patch_size=patch_size,

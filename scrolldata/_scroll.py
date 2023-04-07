@@ -1,7 +1,10 @@
 import configparser
+import glob
 import io
 import json
 import logging
+from abc import ABC
+from dataclasses import dataclass
 from enum import Enum
 from os import makedirs, path
 from typing import Optional
@@ -9,12 +12,11 @@ from typing import Optional
 import numpy as np
 import requests
 from PIL import Image
+from typing_extensions import Self
 
 from . import LOGGER_NAME
 
 logger = logging.getLogger(LOGGER_NAME)
-
-_CFG_FILE = "scrolldata.cfg"
 
 
 class VesuviusData(Enum):
@@ -40,141 +42,409 @@ class VesuviusData(Enum):
     SCROLL2_88KEV = "/full-scrolls/Scroll2.volpkg/volumes/20230212125146"
 
 
-class Scroll:
-    """A utility class for loading Vesuvius Challenge Data.
+@dataclass
+class VesuviusMetadata:
+    """Vesuvius scroll metadata."""
 
-    Basic Usage:
+    name: str
+    num_slices: int
+    slice_height_mm: float
+    uuid: str
+    min_value: float
+    max_value: float
+    depth_mm: float
 
-    ```python
-        from scrolldata import Scroll, VesuviusData
 
-        scroll = Scroll(VesuviusData.FRAG1_54KEV_SURFACE, downsampling=4)
-        scroll.init()
-        all_data = scroll.load(to_end=True)
-    ```
+class Resolver(ABC):
+    def resolve_slice(self, slice: int, width: Optional[int] = None) -> np.ndarray:
+        """Resolve the specified image slice.
 
-    Please create a `scrolldata.cfg` file in the working directory
-    with the data download information accessible after accepting
-    the Vesuvius Challenge data license at https://scrollprize.org:
+        Args:
+            slice: The slice index.
+            width: The filename width. If the index is 12
+                and the width is 5, this implies "00012"
 
-    ```ini
-        [data]
-        url=<root url>
-        username=<username>
-        password=<password>
-    ```
-    """
+        Returns:
+            The npy array of the slice.
+        """
+        ...
+
+    def resolve_mask(self) -> Optional[np.ndarray]:
+        """Get the mask, if one exists.
+
+        Returns:
+            The numpy mask array or None.
+        """
+        ...
+
+    def resolve_ink_labels(self) -> Optional[np.ndarray]:
+        """Get the ink labels, if they exist.
+
+        Returns:
+            The numpy array of labels or None.
+        """
+        ...
+
+    def resolve_metadata(self) -> Optional[VesuviusMetadata]:
+        """Resolve the metadata.
+
+        Returns:
+            The metadata or None.
+        """
+        ...
+
+
+class RemoteResolver(Resolver):
+    """Resolve the images via the online server if necessary."""
 
     def __init__(
         self,
+        url: str,
+        username: str,
+        password: str,
         data: VesuviusData,
-        dir: Optional[str] = None,
-        downsampling: Optional[int] = None,
-        numpy_cache: bool = False,
+        data_dir: str,
+        mask_labels_dir: Optional[str] = None,
+        metadata_dir: Optional[str] = None,
+        numpy: bool = False,
+        downsampling: int = 1,
     ):
         """
         Args:
-            data: The VesuviusData to load.
-            dir: The cache parent directory.
-            downsampling: The downsampling factor to apply.
-            numpy_cache: If True, cache data as NPY arrays
-                instead of raw TIFF files.
+            url: The official data set base url
+            username: The username.
+            password: The password.
+            data: The remote data to link to.
+            data_dir: The local folder for caching data.
+            mask_labels_dir: Optional directory to store mask/labels,
+                defaults to data_dir.
+            metadata_dir: Optional directory to store metadata json,
+                defaults to mask_labels_dir.
+            numpy: True if the data_dir should use npy files.
+            downsampling: The downsampling factor.
         """
         super().__init__()
-        self._data = data
-        self._slice_height_mm: Optional[float] = None
-        self._num_slices: Optional[int] = None
-        self._name: Optional[str] = None
-        self._min_value: Optional[float] = None
-        self._max_value: Optional[float] = None
-        self._parent_dir = dir if dir is not None else "."
-        self._root_dir = path.join(self._parent_dir, self._data.name)
-        self._filename_width = 4
-        self._mask: Optional[np.ndarray] = None
-        self._ink_labels: Optional[np.ndarray] = None
-        self._downsampling = downsampling if downsampling is not None else 1
-        self._numpy_cache = numpy_cache
-        self._uuid: Optional[str] = None
+        self._url = url
+        self._auth = (username, password)
+        self._volume_path = str(data.value)
+        self._data_dir = data_dir
+        self._mask_labels_dir = data_dir if mask_labels_dir is None else mask_labels_dir
+        self._metadata_dir = (
+            self._mask_labels_dir if metadata_dir is None else metadata_dir
+        )
+        self._numpy = numpy
+        self._downsampling = downsampling
 
-        if not path.exists(_CFG_FILE):
-            raise RuntimeError("Unable to find scrollprize.cfg in working directory")
+    def _load_local(self, path: str) -> np.ndarray:
+        """Load the local data via numpy or pillow.
+
+        Args:
+            path: The path to the local file.
+
+        Returns:
+            The numpy array.
+        """
+        if path.endswith(".npy"):
+            out = np.load(path)
+        else:
+            im = Image.open(path)
+            out = np.array(im)
+            del im
+        return out[:: self._downsampling, :: self._downsampling]
+
+    def _load_remote(self, url: str, save_local: Optional[str] = None) -> np.ndarray:
+        """Load the image from remote, optionally saving a cached copy.
+
+        Args:
+            url: The url of the remote image file.
+            save_local: Optional, the local directory to cache the downloaded file.
+        """
+        res = requests.get(url, auth=self._auth)
+        assert res.status_code == 200, f"GET {url} = {res.status_code}"
+        im = Image.open(io.BytesIO(res.content))
+        out = np.array(im)
+
+        if save_local is not None:
+            local_path = path.join(save_local, url.rsplit("/", 1)[-1])
+            if not path.exists(save_local):
+                makedirs(save_local)
+            if self._numpy:
+                no_ext = local_path.rsplit(".", 1)[0]
+                np.save(f"{no_ext}.npy", np.array(im))
+            else:
+                im.save(local_path)
+        del im
+        return out[:: self._downsampling, :: self._downsampling]
+
+    def resolve_slice(self, slice: int, width: Optional[int] = None) -> np.ndarray:
+        if width is None:
+            # Try to infer from the number of slices
+            metadata = self.resolve_metadata()
+            if metadata is not None:
+                width = int(np.log10(metadata.num_slices)) + 1
+        slice_id = "{slice:0{width}d}".format(slice=slice, width=width)
+        ext = "npy" if self._numpy else "tif"
+        local_path = path.join(self._data_dir, f"{slice_id}.{ext}")
+        if path.exists(local_path):
+            out = self._load_local(local_path)
+        else:
+            remote_url = self._url + self._volume_path + f"/{slice_id}.tif"
+            out = self._load_remote(remote_url, self._data_dir)
+        return out
+
+    def resolve_ink_labels(self) -> Optional[np.ndarray]:
+        if "fragments" in self._volume_path and "working" in self._volume_path:
+            ext = "npy" if self._numpy else "png"
+            local_path = path.join(self._mask_labels_dir, f"inklabels.{ext}")
+            if path.exists(local_path):
+                out = self._load_local(local_path)
+            else:
+                root_fragment_url = self._volume_path.rsplit("/", maxsplit=1)[0]
+                remote_url = f"{self._url}{root_fragment_url}/inklabels.png"
+                out = self._load_remote(remote_url, self._mask_labels_dir)
+            return out
+        return None
+
+    def resolve_mask(self) -> Optional[np.ndarray]:
+        if "fragments" in self._volume_path and "working" in self._volume_path:
+            ext = "npy" if self._numpy else "png"
+            local_path = path.join(self._mask_labels_dir, f"mask.{ext}")
+            if path.exists(local_path):
+                out = self._load_local(local_path)
+            else:
+                root_fragment_url = self._volume_path.rsplit("/", maxsplit=1)[0]
+                remote_url = f"{self._url}{root_fragment_url}/mask.png"
+                out = self._load_remote(remote_url, self._mask_labels_dir)
+            return out
+        return None
+
+    def resolve_metadata(self) -> Optional[VesuviusMetadata]:
+        local_path = path.join(self._metadata_dir, "meta.json")
+        if path.exists(local_path):
+            with open(local_path, "r") as meta_file:
+                content = json.loads(meta_file.read())
+        else:
+            metadata_url = f"{self._url}{self._volume_path}/meta.json"
+            res = requests.get(metadata_url, auth=self._auth)
+            content = res.json()
+
+            if not path.exists(self._metadata_dir):
+                makedirs(self._metadata_dir)
+            with open(local_path, "w") as meta_file:
+                meta_file.write(json.dumps(content, indent=2))
+
+        return VesuviusMetadata(
+            content["name"],
+            content["slices"],
+            content["voxelsize"] * 1e-3,
+            content["uuid"],
+            content["min"],
+            content["max"],
+            content["voxelsize"] * content["slices"] * 1e-3,
+        )
+
+
+class LocalResolver(Resolver):
+    """Resolve from a local directory."""
+
+    def __init__(
+        self,
+        data_dir: str,
+        mask_labels_dir: Optional[str] = None,
+        metadata_dir: Optional[str] = None,
+        numpy: bool = False,
+        downsampling: int = 1,
+    ):
+        """
+        Args:
+            data_dir: The local folder for caching data.
+            mask_labels_dir: Optional directory to store mask/labels,
+                defaults to data_dir.
+            metadata_dir: Optional directory to store metadata json,
+                defaults to mask_labels_dir.
+            numpy: True if the data_dir should use npy files.
+            downsampling: The downsampling factor.
+        """
+        super().__init__()
+        self._data_dir = data_dir
+        self._mask_labels_dir = data_dir if mask_labels_dir is None else mask_labels_dir
+        self._metadata_dir = (
+            self._mask_labels_dir if metadata_dir is None else metadata_dir
+        )
+        self._numpy = numpy
+        self._downsampling = downsampling
+
+    def _load_local(self, path: str) -> np.ndarray:
+        """Load the local data via numpy or pillow.
+
+        Args:
+            path: The path to the local file.
+
+        Returns:
+            The numpy array.
+        """
+        if path.endswith(".npy"):
+            out = np.load(path)
+        else:
+            im = Image.open(path)
+            out = np.array(im)
+            del im
+        return out[:: self._downsampling, :: self._downsampling]
+
+    def resolve_slice(self, slice: int, width: Optional[int] = None) -> np.ndarray:
+        ext = "npy" if self._numpy else "tif"
+        if width is None:
+            # Try to infer from local data directory
+            data_files = glob.glob(path.join(self._data_dir, f"*.{ext}"))
+            assert len(data_files) > 0, f"No local {ext} data in {self._data_dir}!"
+            width = len(path.basename(data_files[0]).rsplit(".", 1)[0])
+        slice_id = "{slice:0{width}d}".format(slice=slice, width=width)
+        local_path = path.join(self._data_dir, f"{slice_id}.{ext}")
+        return self._load_local(local_path)
+
+    def resolve_ink_labels(self) -> Optional[np.ndarray]:
+        ext = "npy" if self._numpy else "png"
+        local_path = path.join(self._mask_labels_dir, f"inklabels.{ext}")
+        if path.exists(local_path):
+            return self._load_local(local_path)
+        else:
+            return None
+
+    def resolve_mask(self) -> Optional[np.ndarray]:
+        ext = "npy" if self._numpy else "png"
+        local_path = path.join(self._mask_labels_dir, f"mask.{ext}")
+        if path.exists(local_path):
+            return self._load_local(local_path)
+        else:
+            return None
+
+    def resolve_metadata(self) -> Optional[VesuviusMetadata]:
+        local_path = path.join(self._metadata_dir, "meta.json")
+        if path.exists(local_path):
+            with open(local_path, "r") as meta_file:
+                content = json.loads(meta_file.read())
+            return VesuviusMetadata(
+                content["name"],
+                content["slices"],
+                content["voxelsize"] * 1e-3,
+                content["uuid"],
+                content["min"],
+                content["max"],
+                content["voxelsize"] * content["slices"] * 1e-3,
+            )
+        return None
+
+
+class Scroll:
+    """A utility class for loading Vesuvius Challenge Data."""
+
+    def __init__(
+        self,
+        resolver: Resolver,
+        mask: Optional[np.ndarray] = None,
+        ink_labels: Optional[np.ndarray] = None,
+        metadata: Optional[VesuviusMetadata] = None,
+    ):
+        """
+        Args:
+            resolver: The slice resolver.
+            downsampling: The downsampling factor to apply.
+            mask: Optional fragment mask.
+            ink_labels: Optional ink labels.
+            metadata: The VesuviusMetadata for this scroll.
+        """
+        super().__init__()
+        self.metadata = metadata
+        self._resolver = resolver
+        self._mask: Optional[np.ndarray] = mask
+        self._ink_labels: Optional[np.ndarray] = ink_labels
+
+    @staticmethod
+    def from_remote(
+        config_file: str,
+        data: VesuviusData,
+        data_dir: str,
+        mask_labels_dir: Optional[str] = None,
+        metadata_dir: Optional[str] = None,
+        downsampling: int = 1,
+        numpy: bool = False,
+    ) -> "Scroll":
+        """Load the scroll from remote.
+
+        Please create a config file
+        with the data download information accessible after accepting
+        the Vesuvius Challenge data license at https://scrollprize.org:
+
+        ```ini
+            [data]
+            url=<root url>
+            username=<username>
+            password=<password>
+        ```
+
+        Args:
+            config_file: Path to the config file with url and login info.
+            data: The scroll/fragment to load.
+            data_dir: The local directory to store cached slices.
+            mask_labels_dir: Optional local directory to store cached
+                mask and inklabels. Defaults to data_dir.
+            metadata_dir: Optional directory to store metadata json,
+                defaults to mask_labels_dir.
+            downsampling: The downsampling factor.
+            numpy: True if data is stored as numpy locally.
+        """
+        if not path.exists(config_file):
+            raise RuntimeError(f"Unable to find {config_file}")
 
         config = configparser.ConfigParser()
-        config.read(_CFG_FILE)
-        self._auth = (config["data"]["username"], config["data"]["password"])
-        self._volume_url = config["data"]["url"] + str(data.value)
+        config.read(config_file)
 
-    def __repr__(self) -> str:
-        out = [
-            "Scroll(",
-            f"  url={self._volume_url}",
-            f"  name={self.name}",
-            f"  num_slices={self.num_slices}",
-            f"  slice_height_mm={self.slice_height_mm:5f}",
-            f"  min_value={self._min_value}",
-            f"  max_value={self._max_value}",
-            f"  cache_dir={self.cache_root_dir}",
-            ")",
-        ]
-        return "\n".join(out)
+        resolver = RemoteResolver(
+            config["data"]["url"],
+            config["data"]["username"],
+            config["data"]["password"],
+            data,
+            data_dir,
+            mask_labels_dir,
+            metadata_dir,
+            numpy,
+            downsampling,
+        )
+        return Scroll(
+            resolver,
+            resolver.resolve_mask(),
+            resolver.resolve_ink_labels(),
+            resolver.resolve_metadata(),
+        )
 
-    @property
-    def uuid(self) -> str:
-        """Get the UUID.
+    @staticmethod
+    def from_local(
+        data_dir: str,
+        mask_labels_dir: Optional[str] = None,
+        metadata_dir: Optional[str] = None,
+        downsampling: int = 1,
+        numpy: bool = False,
+    ) -> "Scroll":
+        """Load the scroll from local directories.
 
-        Returns:
-            The UUID.
+        Args:
+            data_dir: The local directory to store cached slices.
+            mask_labels_dir: Optional local directory to store cached
+                mask and inklabels. Defaults to data_dir.
+            metadata_dir: Optional directory to store metadata json,
+                defaults to mask_labels_dir.
+            downsampling: The downsampling factor.
+            numpy: True if data is stored as numpy locally.
         """
-        assert self._uuid is not None
-        return self._uuid
-
-    @property
-    def slice_height_mm(self) -> float:
-        """Get the slice height in mm.
-
-        Returns:
-            The slice height in mm.
-        """
-        assert self._slice_height_mm is not None
-        return self._slice_height_mm
-
-    @property
-    def num_slices(self) -> int:
-        """Get the number of slices in the scroll.
-
-        Returns:
-            The total number of slices.
-        """
-        assert self._num_slices is not None
-        return self._num_slices
-
-    @property
-    def name(self) -> str:
-        """Get the name of the scroll data.
-
-        Returns:
-            The name.
-        """
-        assert self._name is not None
-        return self._name
-
-    @property
-    def depth_mm(self) -> float:
-        """Get the total depth in mm.
-
-        Returns:
-            The depth in mm.
-        """
-        return self.num_slices * self.slice_height_mm
-
-    @property
-    def cache_root_dir(self) -> str:
-        """Get the cache root directory.
-
-        Returns:
-            The cache root directory path.
-        """
-        return self._root_dir
+        resolver = LocalResolver(
+            data_dir, mask_labels_dir, metadata_dir, numpy, downsampling
+        )
+        return Scroll(
+            resolver,
+            resolver.resolve_mask(),
+            resolver.resolve_ink_labels(),
+            resolver.resolve_metadata(),
+        )
 
     @property
     def ink_labels(self) -> np.ndarray:
@@ -205,79 +475,6 @@ class Scroll:
         """
         return self._mask is not None and self._ink_labels is not None
 
-    def _load_image(self, url: str) -> np.ndarray:
-        """Load an image, downloading if necessary.
-
-        Args:
-            url: The image url.
-
-        Returns:
-            The numpy array of image data.
-        """
-        filename = path.basename(url)
-        if self._numpy_cache:
-            filename = filename.rsplit(".", 1)[0] + ".npy"
-
-        cache_path = path.join(self.cache_root_dir, filename)
-        if path.exists(cache_path):
-            logger.info(f"Loading cached {filename} ...")
-            if self._numpy_cache:
-                out = np.load(cache_path)
-            else:
-                im = Image.open(cache_path)
-                out = np.array(im)
-                del im
-        else:
-            logger.info(f"Downloading {path.basename(url)} ...")
-            res = requests.get(url, auth=self._auth)
-            assert res.status_code == 200, res.status_code
-            im = Image.open(io.BytesIO(res.content))
-            out = np.array(im)
-            if self._numpy_cache:
-                np.save(cache_path, np.array(im))
-            else:
-                im.save(cache_path)
-            del im
-        resized = out[:: self._downsampling, :: self._downsampling]
-        return resized
-
-    def init(self):
-        """Initialize the scroll data."""
-        logger.info("Initializing scroll metadata ...")
-        self._populate_metadata()
-        if not path.exists(self.cache_root_dir):
-            makedirs(self.cache_root_dir)
-
-        # Load the fragment data if available
-        if "fragments" in self._volume_url and "working" in self._volume_url:
-            root_fragment_url = self._volume_url.rsplit("/", maxsplit=1)[0]
-
-            ink_labels_url = f"{root_fragment_url}/inklabels.png"
-            self._ink_labels = self._load_image(ink_labels_url)
-
-            mask_url = f"{root_fragment_url}/mask.png"
-            self._mask = self._load_image(mask_url)
-
-    def _populate_metadata(self):
-        """Populate the metadata from the volume."""
-        cache_meta = path.join(self.cache_root_dir, "meta.json")
-        if path.exists(cache_meta):
-            with open(cache_meta, "r") as meta_file:
-                content = json.loads(meta_file.read())
-        else:
-            metadata_url = f"{self._volume_url}/meta.json"
-            res = requests.get(metadata_url, auth=self._auth)
-            content = res.json()
-            with open(cache_meta, "w") as meta_file:
-                meta_file.write(json.dumps(content, indent=2))
-        self._num_slices = content["slices"]
-        self._slice_height_mm = content["voxelsize"] * 1e-3
-        self._name = content["name"]
-        self._min_value = content["min"]
-        self._max_value = content["max"]
-        self._filename_width = int(np.log10(self._num_slices)) + 1
-        self._uuid = content["uuid"]
-
     def load(
         self,
         start_depth_mm: Optional[float] = None,
@@ -301,6 +498,8 @@ class Scroll:
             `num_slices`
             `to_end`
 
+        If using `mm` values, the scroll *must* have metadata!
+
         Args:
             start_depth_mm: The starting depth in millimeters.
             end_depth_mm: The end depth in millimeters.
@@ -315,8 +514,8 @@ class Scroll:
         """
         start_index = 0
 
-        if start_depth_mm is not None:
-            start_index = int(start_depth_mm / self.slice_height_mm)
+        if start_depth_mm is not None and self.metadata is not None:
+            start_index = int(start_depth_mm / self.metadata.slice_height_mm)
         elif start_slice is not None:
             start_index = start_slice
         else:
@@ -326,17 +525,17 @@ class Scroll:
 
         end_index = start_index
 
-        if end_depth_mm is not None:
-            end_index = int(end_depth_mm / self.slice_height_mm)
-        elif size_mm is not None:
-            offset = int(size_mm / self.slice_height_mm)
+        if end_depth_mm is not None and self.metadata is not None:
+            end_index = int(end_depth_mm / self.metadata.slice_height_mm)
+        elif size_mm is not None and self.metadata is not None:
+            offset = int(size_mm / self.metadata.slice_height_mm)
             end_index = start_index + offset
         elif end_slice is not None:
             end_index = end_slice + 1
         elif num_slices is not None:
             end_index = start_index + num_slices
-        elif to_end:
-            end_index = self.num_slices
+        elif to_end and self.metadata is not None:
+            end_index = self.metadata.num_slices
         else:
             raise RuntimeError(
                 "Must provide one of end_depth_mm, size_mm, end_slice, or num_slices. To download all data explicitly pass to_end=True"
@@ -344,10 +543,6 @@ class Scroll:
 
         slices = []
         for i in range(start_index, end_index):
-            filename = "{slice:0{width}d}.tif".format(
-                slice=i, width=self._filename_width
-            )
-            slice_url = f"{self._volume_url}/{filename}"
-            slices.append(self._load_image(slice_url))
+            slices.append(self._resolver.resolve_slice(i))
 
         return np.stack(slices)
