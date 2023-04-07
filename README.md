@@ -70,7 +70,7 @@ all_data = scroll.load(to_end=True)
 The command line tool can also generate a data set of randomly sampled patches to the working directory:
 
 ```bash
-python -m scrolldata patches FRAG1_54KEV_SURFACE --cache ./cache --downsampling 4 --size 128 --holdout 0.4,0.4,0.2,0.2 --num 512 --train 0.7 --seed 0 --show --export -c config.cfg
+python -m scrolldata patches FRAG1_54KEV_SURFACE --cache ./cache --downsampling 4 --size 128 --holdout 0.4,0.4,0.2,0.2 --num 512 --train 0.7 --seed 0 --show --export ./out -c config.cfg
 ```
 
 For more information use `python -m scrolldata patches -h`.

@@ -76,9 +76,8 @@ patches_parser.add_argument(
 )
 patches_parser.add_argument(
     "--export",
-    action="store_true",
-    help="export the patches to the working directory",
-    default=False,
+    type=str,
+    help="export the patches to this directory",
 )
 patches_parser.add_argument(
     "--show", action="store_true", help="show the patches", default=False
