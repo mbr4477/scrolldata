@@ -29,7 +29,7 @@ def run_length_encoding(x: np.ndarray) -> str:
     and
     https://www.kaggle.com/code/hackerpoet/even-faster-run-length-encoder/script
 
-    Adapted to fix off-by-one errors and C-style instead of Fortran-style encoding.
+    Adapted to fix off-by-one errors.
 
     Args:
         x: The HxW input image of probabilities from 0 to 1 per pixel.
@@ -37,7 +37,7 @@ def run_length_encoding(x: np.ndarray) -> str:
     Returns:
         The encoding str.
     """
-    flat_img = x.flatten('F')
+    flat_img = x.flatten('C')
     flat_img = np.where(flat_img > 0.5, 1, 0).astype(np.uint8)
 
     # Find the starts using "rising edges"
