@@ -2,6 +2,10 @@
 
 An **unofficial** package for loading data from the [Vesuvius Challenge](https://scrollprize.org/).
 
+## Kaggle Demo
+
+Browse the demo Kaggle notebook: [Loading Fragment Data](https://www.kaggle.com/code/matthewbrussell/loading-fragment-data).
+
 ## Installation
 ```bash
 python -m pip install git+https://github.com/mbr4477/scrolldata.git
