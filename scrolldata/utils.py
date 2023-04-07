@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def f05_score(predicted: np.ndarray, actual: np.ndarray) -> float:
     """Compute the F0.5 score.
     https://www.kaggle.com/competitions/vesuvius-challenge-ink-detection/overview/evaluation
@@ -19,4 +20,4 @@ def f05_score(predicted: np.ndarray, actual: np.ndarray) -> float:
     precision = true_pos / (true_pos + false_pos)
     recall = true_pos / (true_pos + false_neg)
 
-    return (1.25 * precision * recall) / (0.25 * precision + recall)
+    return ((1.25 * precision * recall) / (0.25 * precision + recall)).item()
