@@ -41,11 +41,6 @@ def make_patch_dataset(
         train_frac=train_frac,
     )
 
-    if export is not None:
-        if not path.exists(export):
-            os.makedirs(export)
-        export_patches(scroll, patch_splits, export)
-
     if show:
         _, axs = plt.subplots(ncols=2, dpi=150)
         axs[0].imshow(scroll.load(num_slices=1)[0], cmap="gray")
@@ -89,3 +84,8 @@ def make_patch_dataset(
                 )
             ax.axis("off")
         plt.show()
+
+    if export is not None:
+        if not path.exists(export):
+            os.makedirs(export)
+        export_patches(scroll, patch_splits, export)
