@@ -69,3 +69,11 @@ trainset = PatchDataset("./train")
 x = trainset[0]
 print(x["inputs"].shape, x["targets"].shape)
 ```
+
+## Tests
+To run tests, install `pytest`.
+
+```bash
+python -m pip install pytest
+python -m pytest .
+```
