@@ -43,7 +43,7 @@ from scrolldata import Scroll, VesuviusData
 scroll = Scroll.from_remote(
     "path/to/auth.cfg",
     VesuviusData.FRAG1_54KEV_SURFACE,
-    data_dir="./FRAG1_54KEV_SURFACE/surface_volume,
+    data_dir="./FRAG1_54KEV_SURFACE/surface_volume",
     mask_labels_dir="./FRAG1_54KEV_SURFACE",
     downsampling=8,
     numpy=True,
@@ -58,8 +58,8 @@ To load the data from a local directory (e.g., for Kaggle notebook):
 ```python
 from scrolldata import Scroll
 
-scroll = Scroll.from_remote(
-    data_dir="./FRAG1_54KEV_SURFACE/surface_volume,
+scroll = Scroll.from_local(
+    data_dir="./FRAG1_54KEV_SURFACE/surface_volume",
     mask_labels_dir="./FRAG1_54KEV_SURFACE",
     downsampling=8,
     numpy=False,
