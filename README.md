@@ -49,7 +49,7 @@ scroll = Scroll.from_remote(
     numpy=True,
 )
 
-# Loads the data as numpy (not recommended)
+# Loads all the data (not recommended)
 all_data = scroll.load(to_end=True)
 ```
 
@@ -65,7 +65,7 @@ scroll = Scroll.from_local(
     numpy=False,
 )
 
-# Loads the data as numpy (not recommended)
+# Loads all the data (not recommended)
 all_data = scroll.load(to_end=True)
 ```
 
