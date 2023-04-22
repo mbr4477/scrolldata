@@ -12,7 +12,7 @@ class PatchDataset(Dataset):
     Expects a folder containing a subfolder for each example.
     Each subfolder should contain an `inputs.npy` and `targets.npy`
     numpy array file.
-    
+
     Example:
 
     ```python
@@ -37,7 +37,7 @@ class PatchDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """Returns a single example as a dictionary of inputs and targets.
-        
+
         Returns:
             Dictionary with `inputs` and `targets` keys.
         """
@@ -47,7 +47,7 @@ class PatchDataset(Dataset):
         targets_file = path.join(folder, "targets.npy")
         inputs = torch.tensor(np.load(inputs_file).astype(np.float32))
         inputs /= 65535.0
-        return {
-            "inputs": inputs,
-            "targets": torch.tensor(np.load(targets_file).astype(int)),
-        }
+        out = {"inputs": inputs}
+        if path.exists(targets_file):
+            out["targets"] = torch.tensor(np.load(targets_file).astype(int))
+        return out
