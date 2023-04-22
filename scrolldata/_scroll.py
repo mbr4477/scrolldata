@@ -560,8 +560,8 @@ class Scroll:
             end_index = end_slice + 1
         elif num_slices is not None:
             end_index = start_index + num_slices
-        elif to_end and self.metadata is not None:
-            end_index = self.metadata.num_slices
+        elif to_end:
+            end_index = self._resolver.get_num_slices()
         else:
             raise RuntimeError(
                 "Must provide one of end_depth_mm, size_mm, end_slice, or num_slices. To download all data explicitly pass to_end=True"
